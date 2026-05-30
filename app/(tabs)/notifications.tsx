@@ -180,9 +180,7 @@ export default function NotificationsScreen() {
         <View style={styles.infoBox}>
           <Text style={styles.infoTitle}>ℹ️ ¿Cómo funcionan las alertas?</Text>
           <Text style={styles.infoText}>
-            La Edge Function de Supabase verifica las condiciones climáticas de tu ubicación
-            cada 30 minutos. Si se supera algún umbral, recibirás una notificación push
-            y la alerta aparecerá en la sección "Alertas".
+            El sistema revisa el clima de tu playa cada 30 minutos. Si las condiciones se vuelven peligrosas, te llega una notificación al teléfono y la alerta queda guardada en la pestaña "Alertas".{'\n\n'}Podés elegir para qué situaciones querés recibir avisos usando los switches de arriba.
           </Text>
         </View>
       </ScrollView>

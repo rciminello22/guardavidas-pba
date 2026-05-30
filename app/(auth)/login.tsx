@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -36,7 +37,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>🏊</Text>
+        <Image source={require('../../assets/icon.png')} style={styles.logo} />
         <Text style={styles.title}>Guardavidas PBA</Text>
         <Text style={styles.subtitle}>Sistema de Alertas Climáticas</Text>
 
@@ -102,9 +103,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   logo: {
-    fontSize: 64,
-    textAlign: 'center',
+    width: 100,
+    height: 100,
+    alignSelf: 'center',
     marginBottom: 12,
+    resizeMode: 'contain',
   },
   title: {
     fontSize: 28,

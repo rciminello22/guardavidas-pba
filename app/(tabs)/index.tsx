@@ -9,7 +9,6 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
 import {
   fetchWeather,
@@ -17,6 +16,7 @@ import {
   getWeatherIcon,
   getUvLabel,
   getWindLabel,
+  getWindDirection,
 } from '../../lib/weather';
 import { registerForPushNotifications } from '../../lib/notifications';
 import { WeatherData, THRESHOLDS } from '../../lib/types';
@@ -29,22 +29,24 @@ interface WeatherCardProps {
   icon: string;
   statusColor: string;
   statusLabel: string;
+  subtitle?: string;
 }
 
-function WeatherCard({ label, value, unit, icon, statusColor, statusLabel }: WeatherCardProps) {
+function WeatherCard({ label, value, unit, icon, statusColor, statusLabel, subtitle }: Readonly<WeatherCardProps>) {
   return (
     <View style={[styles.card, { borderLeftColor: statusColor, borderLeftWidth: 5 }]}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardIcon}>{icon}</Text>
         <Text style={styles.cardLabel}>{label}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
+          <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
       </View>
       <Text style={styles.cardValue}>
         {value}
         <Text style={styles.cardUnit}> {unit}</Text>
       </Text>
-      <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
-        <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-      </View>
+      {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
     </View>
   );
 }
@@ -61,46 +63,35 @@ export default function DashboardScreen() {
     try {
       setError(null);
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Se necesita permiso de ubicación para mostrar el clima.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*, beaches(*)')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.beaches) {
+        setError('No tenés una playa asignada. Actualizá tu perfil.');
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const { latitude, longitude, name, municipality } = profile.beaches;
+      setLocationName(`${name} — ${municipality}`);
 
-      const { latitude, longitude } = location.coords;
-
-      const [weatherData, geoResult] = await Promise.all([
-        fetchWeather(latitude, longitude),
-        Location.reverseGeocodeAsync({ latitude, longitude }),
-      ]);
-
+      const weatherData = await fetchWeather(latitude, longitude);
       setWeather(weatherData);
       setLastUpdated(new Date());
 
-      if (geoResult.length > 0) {
-        const geo = geoResult[0];
-        setLocationName(
-          [geo.city, geo.region].filter(Boolean).join(', ') || 'Ubicación actual'
-        );
+      const pushToken = await registerForPushNotifications();
+      if (pushToken) {
+        await supabase.from('profiles').update({ expo_push_token: pushToken }).eq('id', user.id);
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const pushToken = await registerForPushNotifications();
-        await supabase.from('profiles').update({
-          expo_push_token: pushToken,
-          latitude,
-          longitude,
-        }).eq('id', user.id);
-
-        await checkAndCreateAlerts(user.id, weatherData);
-      }
+      await checkAndCreateAlerts(user.id, weatherData, profile);
     } catch (err: any) {
       setError(err.message ?? 'Error al obtener datos del clima.');
     } finally {
@@ -109,13 +100,7 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  async function checkAndCreateAlerts(userId: string, data: WeatherData) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('notify_wind, notify_uv, notify_precipitation')
-      .eq('id', userId)
-      .single();
-
+  async function checkAndCreateAlerts(userId: string, data: WeatherData, profile: any) {
     if (!profile) return;
 
     const alerts: { type: string; message: string }[] = [];
@@ -123,7 +108,7 @@ export default function DashboardScreen() {
     if (profile.notify_wind && data.windspeed > THRESHOLDS.wind_kmh) {
       alerts.push({
         type: 'viento',
-        message: `⚠️ Viento peligroso: ${data.windspeed.toFixed(1)} km/h (límite: ${THRESHOLDS.wind_kmh} km/h)`,
+        message: `⚠️ Viento peligroso: ${data.windspeed.toFixed(1)} km/h del ${getWindDirection(data.winddirection)} (límite: ${THRESHOLDS.wind_kmh} km/h)`,
       });
     }
     if (profile.notify_uv && data.uv_index > THRESHOLDS.uv_index) {
@@ -226,7 +211,7 @@ export default function DashboardScreen() {
           </View>
 
           <Text style={styles.sectionTitle}>Condiciones actuales</Text>
-          <View style={styles.grid}>
+          <View style={styles.bento}>
             <WeatherCard
               label="Viento"
               value={weather.windspeed.toFixed(1)}
@@ -234,6 +219,7 @@ export default function DashboardScreen() {
               icon="💨"
               statusColor={windInfo.color}
               statusLabel={windInfo.label}
+              subtitle={`Dirección: ${getWindDirection(weather.winddirection)}`}
             />
             <WeatherCard
               label="Índice UV"
@@ -253,22 +239,8 @@ export default function DashboardScreen() {
                 weather.precipitation > THRESHOLDS.precipitation_mmh ? 'Peligrosa' : 'Normal'
               }
             />
-            <WeatherCard
-              label="Temperatura"
-              value={weather.temperature.toFixed(1)}
-              unit="°C"
-              icon="🌡️"
-              statusColor={Colors.primary}
-              statusLabel="Actual"
-            />
           </View>
 
-          <View style={styles.thresholdsBox}>
-            <Text style={styles.thresholdsTitle}>Umbrales de alerta</Text>
-            <Text style={styles.thresholdRow}>💨 Viento: &gt; {THRESHOLDS.wind_kmh} km/h</Text>
-            <Text style={styles.thresholdRow}>☀️ UV: &gt; {THRESHOLDS.uv_index}</Text>
-            <Text style={styles.thresholdRow}>🌧️ Lluvia: &gt; {THRESHOLDS.precipitation_mmh} mm/h</Text>
-          </View>
         </>
       )}
     </ScrollView>
@@ -385,32 +357,30 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingBottom: 12,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
+  bento: {
+    paddingHorizontal: 16,
     gap: 8,
   },
   card: {
-    width: '47%',
     backgroundColor: Colors.card,
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
     gap: 8,
-    marginHorizontal: 4,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
   },
   cardIcon: {
     fontSize: 20,
   },
   cardLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+    flexShrink: 0,
   },
   cardValue: {
     fontSize: 26,
@@ -421,6 +391,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: Colors.textSecondary,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   statusBadge: {
     alignSelf: 'flex-start',

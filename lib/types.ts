@@ -1,13 +1,22 @@
 export type AlertType = 'viento' | 'uv' | 'precipitacion';
 
+export interface Beach {
+  id: string;
+  name: string;
+  municipality: string;
+  latitude: number;
+  longitude: number;
+  is_active: boolean;
+}
+
 export interface Profile {
   id: string;
   full_name: string;
-  beach_name: string;
+  beach_id: string | null;
+  beach_name: string | null;
   lifeguard_id: string;
   expo_push_token: string | null;
-  latitude: number | null;
-  longitude: number | null;
+  is_admin: boolean;
   notify_wind: boolean;
   notify_uv: boolean;
   notify_precipitation: boolean;
@@ -25,6 +34,7 @@ export interface Alert {
 export interface WeatherData {
   temperature: number;
   windspeed: number;
+  winddirection: number;
   precipitation: number;
   uv_index: number;
   weathercode: number;

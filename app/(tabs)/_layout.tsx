@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../lib/colors';
+import { supabase } from '../../lib/supabase';
 
-function TabIcon({ icon, label, focused }: { icon: string; label: string; focused: boolean }) {
+function TabIcon({ icon, label, focused }: Readonly<{ icon: string; label: string; focused: boolean }>) {
   return (
     <View style={styles.tabItem}>
       <Text style={styles.icon}>{icon}</Text>
@@ -12,6 +14,16 @@ function TabIcon({ icon, label, focused }: { icon: string; label: string; focuse
 }
 
 export default function TabsLayout() {
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+        .then(({ data }) => setIsAdmin(data?.is_admin ?? false));
+    });
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -26,36 +38,36 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon="🌊" label="Inicio" focused={focused} />
-          ),
+          tabBarIcon: ({ focused }) => <TabIcon icon="🌊" label="Inicio" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="alerts"
         options={{
           title: 'Alertas',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon="⚠️" label="Alertas" focused={focused} />
-          ),
+          tabBarIcon: ({ focused }) => <TabIcon icon="⚠️" label="Alertas" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon="👤" label="Perfil" focused={focused} />
-          ),
+          tabBarIcon: ({ focused }) => <TabIcon icon="👤" label="Perfil" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
           title: 'Notificaciones',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon="🔔" label="Avisos" focused={focused} />
-          ),
+          tabBarIcon: ({ focused }) => <TabIcon icon="🔔" label="Avisos" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'Admin',
+          href: isAdmin ? '/admin' : null,
+          tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" label="Admin" focused={focused} />,
         }}
       />
     </Tabs>
@@ -71,27 +83,10 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 8,
   },
-  tabItem: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  icon: {
-    fontSize: 24,
-  },
-  tabLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  tabLabelActive: {
-    color: Colors.primary,
-  },
-  header: {
-    backgroundColor: Colors.primary,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.white,
-  },
+  tabItem: { alignItems: 'center', gap: 2 },
+  icon: { fontSize: 24 },
+  tabLabel: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  tabLabelActive: { color: Colors.primary },
+  header: { backgroundColor: Colors.primary },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.white },
 });

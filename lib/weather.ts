@@ -6,7 +6,7 @@ export async function fetchWeather(latitude: number, longitude: number): Promise
   const params = new URLSearchParams({
     latitude: latitude.toString(),
     longitude: longitude.toString(),
-    current: 'temperature_2m,windspeed_10m,precipitation,uv_index,weathercode',
+    current: 'temperature_2m,windspeed_10m,winddirection_10m,precipitation,uv_index,weathercode',
     timezone: 'America/Argentina/Buenos_Aires',
     forecast_days: '1',
   });
@@ -22,6 +22,7 @@ export async function fetchWeather(latitude: number, longitude: number): Promise
   return {
     temperature: current.temperature_2m,
     windspeed: current.windspeed_10m,
+    winddirection: current.winddirection_10m,
     precipitation: current.precipitation,
     uv_index: current.uv_index,
     weathercode: current.weathercode,
@@ -61,6 +62,16 @@ export function getUvLabel(uv: number): { label: string; color: string } {
   if (uv <= 7) return { label: 'Alto', color: '#FF9800' };
   if (uv <= 10) return { label: 'Muy alto', color: '#F44336' };
   return { label: 'Extremo', color: '#9C27B0' };
+}
+
+export function getWindDirection(degrees: number): string {
+  const dirs = [
+    'Norte', 'Norte-Noreste', 'Noreste', 'Este-Noreste',
+    'Este', 'Este-Sureste', 'Sureste', 'Sur-Sureste',
+    'Sur', 'Sur-Suroeste', 'Suroeste', 'Oeste-Suroeste',
+    'Oeste', 'Oeste-Noroeste', 'Noroeste', 'Norte-Noroeste',
+  ];
+  return dirs[Math.round(degrees / 22.5) % 16];
 }
 
 export function getWindLabel(kmh: number): { label: string; color: string } {

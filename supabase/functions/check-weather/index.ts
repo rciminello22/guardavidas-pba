@@ -11,15 +11,26 @@ const THRESHOLDS = {
 
 interface WeatherResult {
   windspeed: number;
+  winddirection: number;
   uv_index: number;
   precipitation: number;
+}
+
+function getWindDirection(degrees: number): string {
+  const dirs = [
+    'Norte', 'Norte-Noreste', 'Noreste', 'Este-Noreste',
+    'Este', 'Este-Sureste', 'Sureste', 'Sur-Sureste',
+    'Sur', 'Sur-Suroeste', 'Suroeste', 'Oeste-Suroeste',
+    'Oeste', 'Oeste-Noroeste', 'Noroeste', 'Norte-Noroeste',
+  ];
+  return dirs[Math.round(degrees / 22.5) % 16];
 }
 
 async function getWeather(lat: number, lon: number): Promise<WeatherResult> {
   const params = new URLSearchParams({
     latitude: lat.toString(),
     longitude: lon.toString(),
-    current: 'windspeed_10m,precipitation,uv_index',
+    current: 'windspeed_10m,winddirection_10m,precipitation,uv_index',
     timezone: 'America/Argentina/Buenos_Aires',
     forecast_days: '1',
   });
@@ -30,6 +41,7 @@ async function getWeather(lat: number, lon: number): Promise<WeatherResult> {
 
   return {
     windspeed: c.windspeed_10m,
+    winddirection: c.winddirection_10m,
     uv_index: c.uv_index,
     precipitation: c.precipitation,
   };
@@ -57,12 +69,11 @@ Deno.serve(async (_req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Get all profiles with coordinates
+    // Get all profiles with assigned beach
     const { data: profiles, error } = await supabase
       .from('profiles')
-      .select('id, expo_push_token, latitude, longitude, notify_wind, notify_uv, notify_precipitation, beach_name')
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null);
+      .select('id, expo_push_token, notify_wind, notify_uv, notify_precipitation, beaches(id, name, municipality, latitude, longitude)')
+      .not('beach_id', 'is', null);
 
     if (error) throw error;
     if (!profiles || profiles.length === 0) {
@@ -74,24 +85,27 @@ Deno.serve(async (_req) => {
 
     for (const profile of profiles) {
       try {
-        const weather = await getWeather(profile.latitude, profile.longitude);
+        const beach = profile.beaches as any;
+        if (!beach) continue;
+
+        const weather = await getWeather(beach.latitude, beach.longitude);
         const newAlerts: { user_id: string; type: string; message: string; is_read: boolean }[] = [];
         const pushMessages: string[] = [];
 
         if (profile.notify_wind && weather.windspeed > THRESHOLDS.wind_kmh) {
-          const msg = `⚠️ Viento peligroso en ${profile.beach_name}: ${weather.windspeed.toFixed(1)} km/h`;
+          const msg = `⚠️ Viento peligroso en ${beach.name}: ${weather.windspeed.toFixed(1)} km/h del ${getWindDirection(weather.winddirection)}`;
           newAlerts.push({ user_id: profile.id, type: 'viento', message: msg, is_read: false });
           pushMessages.push(msg);
         }
 
         if (profile.notify_uv && weather.uv_index > THRESHOLDS.uv_index) {
-          const msg = `☀️ UV extremo en ${profile.beach_name}: índice ${weather.uv_index.toFixed(1)}`;
+          const msg = `☀️ UV extremo en ${beach.name}: índice ${weather.uv_index.toFixed(1)}`;
           newAlerts.push({ user_id: profile.id, type: 'uv', message: msg, is_read: false });
           pushMessages.push(msg);
         }
 
         if (profile.notify_precipitation && weather.precipitation > THRESHOLDS.precipitation_mmh) {
-          const msg = `🌧️ Lluvia intensa en ${profile.beach_name}: ${weather.precipitation.toFixed(1)} mm/h`;
+          const msg = `🌧️ Lluvia intensa en ${beach.name}: ${weather.precipitation.toFixed(1)} mm/h`;
           newAlerts.push({ user_id: profile.id, type: 'precipitacion', message: msg, is_read: false });
           pushMessages.push(msg);
         }
@@ -101,9 +115,11 @@ Deno.serve(async (_req) => {
           alertsCreated += newAlerts.length;
 
           if (profile.expo_push_token && pushMessages.length > 0) {
-            const title = `🚨 Alerta — ${profile.beach_name}`;
-            const body = pushMessages.join(' | ');
-            await sendPushNotification(profile.expo_push_token, title, body);
+            await sendPushNotification(
+              profile.expo_push_token,
+              `🚨 Alerta — ${beach.name}`,
+              pushMessages.join(' | ')
+            );
             pushSent++;
           }
         }

@@ -14,18 +14,20 @@ import {
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../lib/colors';
+import { Beach } from '../../lib/types';
+import BeachPicker from '../components/BeachPicker';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
-  const [beachName, setBeachName] = useState('');
+  const [selectedBeach, setSelectedBeach] = useState<Beach | null>(null);
   const [lifeguardId, setLifeguardId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleRegister() {
-    if (!fullName || !beachName || !lifeguardId || !email || !password) {
+    if (!fullName || !selectedBeach || !lifeguardId || !email || !password) {
       Alert.alert('Error', 'Completá todos los campos.');
       return;
     }
@@ -47,11 +49,10 @@ export default function RegisterScreen() {
     const { error: profileError } = await supabase.from('profiles').insert({
       id: data.user.id,
       full_name: fullName,
-      beach_name: beachName,
+      beach_id: selectedBeach.id,
+      beach_name: selectedBeach.name,
       lifeguard_id: lifeguardId,
       expo_push_token: null,
-      latitude: null,
-      longitude: null,
       notify_wind: true,
       notify_uv: true,
       notify_precipitation: true,
@@ -92,13 +93,9 @@ export default function RegisterScreen() {
           />
 
           <Text style={styles.label}>Playa asignada</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Playa de Mar del Plata"
-            placeholderTextColor={Colors.textSecondary}
-            value={beachName}
-            onChangeText={setBeachName}
-            autoCapitalize="words"
+          <BeachPicker
+            selectedId={selectedBeach?.id ?? null}
+            onSelect={setSelectedBeach}
           />
 
           <Text style={styles.label}>Legajo de guardavidas</Text>
@@ -161,36 +158,12 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  inner: {
-    paddingHorizontal: 28,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-    marginBottom: 32,
-  },
-  form: {
-    gap: 4,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 6,
-    marginTop: 12,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  inner: { paddingHorizontal: 28, paddingTop: 60, paddingBottom: 40 },
+  title: { fontSize: 28, fontWeight: '800', color: Colors.primary, marginBottom: 4 },
+  subtitle: { fontSize: 15, color: Colors.textSecondary, marginBottom: 32 },
+  form: { gap: 4 },
+  label: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 6, marginTop: 12 },
   input: {
     borderWidth: 2,
     borderColor: Colors.border,
@@ -201,31 +174,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
     backgroundColor: Colors.card,
   },
-  btn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  btnText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  linkBtn: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  linkText: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-  },
-  linkTextBold: {
-    color: Colors.primary,
-    fontWeight: '700',
-  },
+  btn: { backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
+  btnDisabled: { opacity: 0.6 },
+  btnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  linkBtn: { alignItems: 'center', paddingVertical: 16 },
+  linkText: { fontSize: 15, color: Colors.textSecondary },
+  linkTextBold: { color: Colors.primary, fontWeight: '700' },
 });
