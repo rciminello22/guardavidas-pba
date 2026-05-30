@@ -1,0 +1,386 @@
+import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
+import { Profile } from '../../lib/types';
+import { Colors } from '../../lib/colors';
+
+export default function ProfileScreen() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const [fullName, setFullName] = useState('');
+  const [beachName, setBeachName] = useState('');
+  const [lifeguardId, setLifeguardId] = useState('');
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  async function loadProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (data) {
+      setProfile(data);
+      setFullName(data.full_name);
+      setBeachName(data.beach_name);
+      setLifeguardId(data.lifeguard_id);
+    }
+    setLoading(false);
+  }
+
+  async function saveProfile() {
+    if (!fullName || !beachName || !lifeguardId) {
+      Alert.alert('Error', 'Completá todos los campos.');
+      return;
+    }
+    setSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ full_name: fullName, beach_name: beachName, lifeguard_id: lifeguardId })
+      .eq('id', user.id);
+
+    setSaving(false);
+    if (error) {
+      Alert.alert('Error', 'No se pudo guardar el perfil.');
+      return;
+    }
+    setProfile((prev) =>
+      prev ? { ...prev, full_name: fullName, beach_name: beachName, lifeguard_id: lifeguardId } : prev
+    );
+    setEditing(false);
+    Alert.alert('✅ Perfil actualizado');
+  }
+
+  async function handleLogout() {
+    Alert.alert(
+      'Cerrar sesión',
+      '¿Estás seguro que querés cerrar sesión?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar sesión',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.auth.signOut();
+          },
+        },
+      ]
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.avatarSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {profile?.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+            </Text>
+          </View>
+          <Text style={styles.nameText}>{profile?.full_name}</Text>
+          <Text style={styles.idText}>Legajo: {profile?.lifeguard_id}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.cardTitle}>Datos del guardavidas</Text>
+            {!editing && (
+              <TouchableOpacity onPress={() => setEditing(true)}>
+                <Text style={styles.editBtn}>Editar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Nombre completo</Text>
+            {editing ? (
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                autoCapitalize="words"
+              />
+            ) : (
+              <Text style={styles.fieldValue}>{profile?.full_name}</Text>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Playa asignada</Text>
+            {editing ? (
+              <TextInput
+                style={styles.input}
+                value={beachName}
+                onChangeText={setBeachName}
+                autoCapitalize="words"
+              />
+            ) : (
+              <View style={styles.fieldRow}>
+                <Text style={styles.beachIcon}>🏖️</Text>
+                <Text style={styles.fieldValue}>{profile?.beach_name}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Legajo</Text>
+            {editing ? (
+              <TextInput
+                style={styles.input}
+                value={lifeguardId}
+                onChangeText={setLifeguardId}
+                autoCapitalize="characters"
+              />
+            ) : (
+              <Text style={styles.fieldValue}>{profile?.lifeguard_id}</Text>
+            )}
+          </View>
+
+          {editing && (
+            <View style={styles.editActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  setEditing(false);
+                  setFullName(profile?.full_name ?? '');
+                  setBeachName(profile?.beach_name ?? '');
+                  setLifeguardId(profile?.lifeguard_id ?? '');
+                }}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+                onPress={saveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Guardar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {profile?.expo_push_token && (
+          <View style={styles.tokenCard}>
+            <Text style={styles.tokenTitle}>🔔 Notificaciones activas</Text>
+            <Text style={styles.tokenSubtitle}>Tu dispositivo está registrado para recibir alertas.</Text>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Text style={styles.logoutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+  },
+  content: {
+    paddingBottom: 40,
+  },
+  avatarSection: {
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  avatarText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  nameText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  idText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+  },
+  card: {
+    margin: 16,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 20,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  editBtn: {
+    fontSize: 15,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  field: {
+    paddingVertical: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  fieldValue: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  beachIcon: {
+    fontSize: 18,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  cancelBtn: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  saveBtn: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tokenCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.success,
+  },
+  tokenTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  tokenSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  logoutBtn: {
+    marginHorizontal: 16,
+    borderWidth: 2,
+    borderColor: Colors.danger,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.danger,
+  },
+});

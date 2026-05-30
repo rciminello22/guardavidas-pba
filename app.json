@@ -1,25 +1,66 @@
 {
   "expo": {
-    "name": "guardavidas-pba",
+    "name": "Guardavidas PBA",
     "slug": "guardavidas-pba",
     "version": "1.0.0",
+    "scheme": "guardavidas-pba",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.guardavidaspba.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#005FA3"
       },
-      "predictiveBackGestureEnabled": false
+      "package": "com.guardavidaspba.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#005FA3",
+          "defaultChannel": "alertas"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6882341d-5e40-4ede-b1d6-05854cb31887"
+      }
+    },
+    "owner": "rciminello22"
   }
 }
