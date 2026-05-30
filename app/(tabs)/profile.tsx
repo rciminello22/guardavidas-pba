@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase';
 import { Profile, Beach } from '../../lib/types';
 import { Colors } from '../../lib/colors';
 import BeachPicker from '../components/BeachPicker';
+import TimePicker from '../components/TimePicker';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -25,6 +26,8 @@ export default function ProfileScreen() {
   const [fullName, setFullName] = useState('');
   const [selectedBeach, setSelectedBeach] = useState<Beach | null>(null);
   const [lifeguardId, setLifeguardId] = useState('');
+  const [shiftStart, setShiftStart] = useState('08:00');
+  const [shiftEnd, setShiftEnd] = useState('18:00');
 
   useEffect(() => { loadProfile(); }, []);
 
@@ -42,6 +45,8 @@ export default function ProfileScreen() {
       setProfile(data);
       setFullName(data.full_name);
       setLifeguardId(data.lifeguard_id);
+      setShiftStart((data.shift_start ?? '08:00').slice(0, 5));
+      setShiftEnd((data.shift_end ?? '18:00').slice(0, 5));
       if (data.beaches) {
         setCurrentBeach(data.beaches);
         setSelectedBeach(data.beaches);
@@ -66,6 +71,8 @@ export default function ProfileScreen() {
         beach_id: selectedBeach.id,
         beach_name: selectedBeach.name,
         lifeguard_id: lifeguardId,
+        shift_start: shiftStart,
+        shift_end: shiftEnd,
       })
       .eq('id', user.id);
 
@@ -74,6 +81,7 @@ export default function ProfileScreen() {
 
     setCurrentBeach(selectedBeach);
     setEditing(false);
+    await loadProfile();
     Alert.alert('✅ Perfil actualizado');
   }
 
@@ -130,7 +138,7 @@ export default function ProfileScreen() {
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Playa asignada</Text>
             {editing ? (
-              <BeachPicker selectedId={selectedBeach?.id ?? null} onSelect={setSelectedBeach} />
+              <BeachPicker selectedId={selectedBeach?.id ?? null} initialBeach={selectedBeach} onSelect={setSelectedBeach} />
             ) : (
               <View style={styles.fieldRow}>
                 <Text style={styles.beachIcon}>🏖️</Text>
@@ -152,6 +160,26 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          <View style={styles.divider} />
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Horario de turno</Text>
+            {editing ? (
+              <View style={styles.shiftRow}>
+                <View style={styles.shiftItem}>
+                  <Text style={styles.shiftSubLabel}>Entrada</Text>
+                  <TimePicker label="Entrada" value={shiftStart} onChange={setShiftStart} />
+                </View>
+                <View style={styles.shiftItem}>
+                  <Text style={styles.shiftSubLabel}>Salida</Text>
+                  <TimePicker label="Salida" value={shiftEnd} onChange={setShiftEnd} />
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.fieldValue}>🕐 {(profile?.shift_start ?? '08:00').slice(0, 5)} — {(profile?.shift_end ?? '18:00').slice(0, 5)}</Text>
+            )}
+          </View>
+
           {editing && (
             <View style={styles.editActions}>
               <TouchableOpacity
@@ -161,6 +189,8 @@ export default function ProfileScreen() {
                   setFullName(profile?.full_name ?? '');
                   setSelectedBeach(currentBeach);
                   setLifeguardId(profile?.lifeguard_id ?? '');
+                  setShiftStart(profile?.shift_start ?? '08:00');
+                  setShiftEnd(profile?.shift_end ?? '18:00');
                 }}
               >
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
@@ -223,4 +253,7 @@ const styles = StyleSheet.create({
   tokenSubtitle: { fontSize: 13, color: Colors.textSecondary },
   logoutBtn: { marginHorizontal: 16, borderWidth: 2, borderColor: Colors.danger, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   logoutText: { fontSize: 16, fontWeight: '700', color: Colors.danger },
+  shiftRow: { flexDirection: 'row', gap: 12 },
+  shiftItem: { flex: 1, gap: 4 },
+  shiftSubLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
 });

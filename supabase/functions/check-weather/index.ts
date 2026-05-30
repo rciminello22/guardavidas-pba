@@ -62,6 +62,16 @@ async function sendPushNotification(token: string, title: string, body: string) 
   });
 }
 
+function isWithinShift(shiftStart: string, shiftEnd: string): boolean {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const [startH, startM] = shiftStart.split(':').map(Number);
+  const [endH, endM] = shiftEnd.split(':').map(Number);
+  const current = now.getHours() * 60 + now.getMinutes();
+  const start = startH * 60 + startM;
+  const end = endH * 60 + endM;
+  return current >= start && current <= end;
+}
+
 Deno.serve(async (_req) => {
   try {
     const supabase = createClient(
@@ -72,7 +82,7 @@ Deno.serve(async (_req) => {
     // Get all profiles with assigned beach
     const { data: profiles, error } = await supabase
       .from('profiles')
-      .select('id, expo_push_token, notify_wind, notify_uv, notify_precipitation, beaches(id, name, municipality, latitude, longitude)')
+      .select('id, expo_push_token, notify_wind, notify_uv, notify_precipitation, shift_start, shift_end, beaches(id, name, municipality, latitude, longitude)')
       .not('beach_id', 'is', null);
 
     if (error) throw error;
@@ -114,7 +124,11 @@ Deno.serve(async (_req) => {
           await supabase.from('alerts').insert(newAlerts);
           alertsCreated += newAlerts.length;
 
-          if (profile.expo_push_token && pushMessages.length > 0) {
+          const withinShift = isWithinShift(
+            profile.shift_start ?? '08:00',
+            profile.shift_end ?? '18:00'
+          );
+          if (profile.expo_push_token && pushMessages.length > 0 && withinShift) {
             await sendPushNotification(
               profile.expo_push_token,
               `🚨 Alerta — ${beach.name}`,

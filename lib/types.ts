@@ -20,6 +20,8 @@ export interface Profile {
   notify_wind: boolean;
   notify_uv: boolean;
   notify_precipitation: boolean;
+  shift_start: string;
+  shift_end: string;
 }
 
 export interface Alert {

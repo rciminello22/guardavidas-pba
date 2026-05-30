@@ -8,7 +8,7 @@ function TabIcon({ icon, label, focused }: Readonly<{ icon: string; label: strin
   return (
     <View style={styles.tabItem}>
       <Text style={styles.icon}>{icon}</Text>
-      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
+      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -83,9 +83,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 8,
   },
-  tabItem: { alignItems: 'center', gap: 2 },
-  icon: { fontSize: 24 },
-  tabLabel: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  tabItem: { alignItems: 'center', gap: 2, width: 60 },
+  icon: { fontSize: 18 },
+  tabLabel: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary, textAlign: 'center' },
   tabLabelActive: { color: Colors.primary },
   header: { backgroundColor: Colors.primary },
   headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.white },

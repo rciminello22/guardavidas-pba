@@ -15,16 +15,21 @@ import { Colors } from '../../lib/colors';
 
 interface BeachPickerProps {
   selectedId: string | null;
+  initialBeach?: Beach | null;
   onSelect: (beach: Beach) => void;
 }
 
-export default function BeachPicker({ selectedId, onSelect }: Readonly<BeachPickerProps>) {
+export default function BeachPicker({ selectedId, initialBeach, onSelect }: Readonly<BeachPickerProps>) {
   const [open, setOpen] = useState(false);
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [filtered, setFiltered] = useState<Beach[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedBeach, setSelectedBeach] = useState<Beach | null>(null);
+  const [selectedBeach, setSelectedBeach] = useState<Beach | null>(initialBeach ?? null);
+
+  useEffect(() => {
+    if (initialBeach) setSelectedBeach(initialBeach);
+  }, [initialBeach]);
 
   useEffect(() => {
     if (open && beaches.length === 0) loadBeaches();

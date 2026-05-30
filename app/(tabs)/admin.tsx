@@ -19,11 +19,32 @@ import { Colors } from '../../lib/colors';
 interface BeachForm {
   name: string;
   municipality: string;
-  latitude: string;
-  longitude: string;
 }
 
-const EMPTY_FORM: BeachForm = { name: '', municipality: '', latitude: '', longitude: '' };
+interface GeoResult {
+  latitude: number;
+  longitude: number;
+  displayName: string;
+}
+
+const EMPTY_FORM: BeachForm = { name: '', municipality: '' };
+
+async function geocode(name: string, municipality: string): Promise<GeoResult | null> {
+  const query = encodeURIComponent(`${name}, ${municipality}, Buenos Aires, Argentina`);
+  const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=ar`;
+
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'GuardavidasPBA/1.0' },
+  });
+  const data = await res.json();
+  if (!data || data.length === 0) return null;
+
+  return {
+    latitude: Number.parseFloat(data[0].lat),
+    longitude: Number.parseFloat(data[0].lon),
+    displayName: data[0].display_name,
+  };
+}
 
 export default function AdminScreen() {
   const [beaches, setBeaches] = useState<Beach[]>([]);
@@ -31,6 +52,8 @@ export default function AdminScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Beach | null>(null);
   const [form, setForm] = useState<BeachForm>(EMPTY_FORM);
+  const [geoResult, setGeoResult] = useState<GeoResult | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loadBeaches = useCallback(async () => {
@@ -48,38 +71,55 @@ export default function AdminScreen() {
   function openNew() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setGeoResult(null);
     setModalOpen(true);
   }
 
   function openEdit(beach: Beach) {
     setEditing(beach);
-    setForm({
-      name: beach.name,
-      municipality: beach.municipality,
-      latitude: beach.latitude.toString(),
-      longitude: beach.longitude.toString(),
-    });
+    setForm({ name: beach.name, municipality: beach.municipality });
+    setGeoResult({ latitude: beach.latitude, longitude: beach.longitude, displayName: `${beach.name}, ${beach.municipality}` });
     setModalOpen(true);
   }
 
+  async function handleGeocode() {
+    if (!form.name || !form.municipality) {
+      Alert.alert('Error', 'Completá nombre y municipio primero.');
+      return;
+    }
+    setGeocoding(true);
+    setGeoResult(null);
+    const result = await geocode(form.name, form.municipality);
+    setGeocoding(false);
+    if (!result) {
+      Alert.alert('No encontrado', 'No se pudo encontrar la ubicación. Probá con otro nombre o municipio.');
+      return;
+    }
+    setGeoResult(result);
+  }
+
   async function save() {
-    const { name, municipality, latitude, longitude } = form;
-    if (!name || !municipality || !latitude || !longitude) {
+    if (!form.name || !form.municipality) {
       Alert.alert('Error', 'Completá todos los campos.');
       return;
     }
-    const lat = parseFloat(latitude);
-    const lon = parseFloat(longitude);
-    if (isNaN(lat) || isNaN(lon)) {
-      Alert.alert('Error', 'Latitud y longitud deben ser números.');
+    if (!geoResult) {
+      Alert.alert('Error', 'Primero buscá la ubicación de la playa.');
       return;
     }
 
     setSaving(true);
+    const payload = {
+      name: form.name,
+      municipality: form.municipality,
+      latitude: geoResult.latitude,
+      longitude: geoResult.longitude,
+    };
+
     if (editing) {
-      await supabase.from('beaches').update({ name, municipality, latitude: lat, longitude: lon }).eq('id', editing.id);
+      await supabase.from('beaches').update(payload).eq('id', editing.id);
     } else {
-      await supabase.from('beaches').insert({ name, municipality, latitude: lat, longitude: lon });
+      await supabase.from('beaches').insert(payload);
     }
     setSaving(false);
     setModalOpen(false);
@@ -117,7 +157,6 @@ export default function AdminScreen() {
             <View style={styles.beachInfo}>
               <Text style={styles.beachName}>{item.name}</Text>
               <Text style={styles.beachMunicipality}>{item.municipality}</Text>
-              <Text style={styles.beachCoords}>{item.latitude.toFixed(4)}, {item.longitude.toFixed(4)}</Text>
             </View>
             <View style={styles.beachActions}>
               <TouchableOpacity style={styles.editItemBtn} onPress={() => openEdit(item)}>
@@ -144,33 +183,55 @@ export default function AdminScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.modalForm}>
-            {[
-              { label: 'Nombre', key: 'name', placeholder: 'Playa Bristol', caps: 'words' },
-              { label: 'Municipio', key: 'municipality', placeholder: 'Mar del Plata', caps: 'words' },
-              { label: 'Latitud', key: 'latitude', placeholder: '-38.0023', keyboard: 'decimal-pad' },
-              { label: 'Longitud', key: 'longitude', placeholder: '-57.5575', keyboard: 'decimal-pad' },
-            ].map((field) => (
-              <View key={field.key}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder={field.placeholder}
-                  placeholderTextColor={Colors.textSecondary}
-                  value={form[field.key as keyof BeachForm]}
-                  onChangeText={(v) => setForm((prev) => ({ ...prev, [field.key]: v }))}
-                  autoCapitalize={(field.caps as any) ?? 'none'}
-                  keyboardType={(field.keyboard as any) ?? 'default'}
-                />
-              </View>
-            ))}
+          <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+            <Text style={styles.fieldLabel}>Nombre de la playa</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Playa Bristol"
+              placeholderTextColor={Colors.textSecondary}
+              value={form.name}
+              onChangeText={(v) => { setForm((p) => ({ ...p, name: v })); setGeoResult(null); }}
+              autoCapitalize="words"
+            />
+
+            <Text style={styles.fieldLabel}>Municipio</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Mar del Plata"
+              placeholderTextColor={Colors.textSecondary}
+              value={form.municipality}
+              onChangeText={(v) => { setForm((p) => ({ ...p, municipality: v })); setGeoResult(null); }}
+              autoCapitalize="words"
+            />
 
             <TouchableOpacity
-              style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-              onPress={save}
-              disabled={saving}
+              style={[styles.geoBtn, geocoding && styles.geoBtnDisabled]}
+              onPress={handleGeocode}
+              disabled={geocoding}
             >
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Guardar</Text>}
+              {geocoding ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.geoBtnText}>📍 Buscar ubicación</Text>
+              )}
+            </TouchableOpacity>
+
+            {geoResult && (
+              <View style={styles.geoResult}>
+                <Text style={styles.geoResultTitle}>✅ Ubicación encontrada</Text>
+                <Text style={styles.geoResultText} numberOfLines={2}>{geoResult.displayName}</Text>
+                <Text style={styles.geoResultCoords}>
+                  {geoResult.latitude.toFixed(5)}, {geoResult.longitude.toFixed(5)}
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.saveBtn, (saving || !geoResult) && styles.saveBtnDisabled]}
+              onPress={save}
+              disabled={saving || !geoResult}
+            >
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Guardar playa</Text>}
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -186,13 +247,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.text },
   addBtn: { backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  list: { padding: 16, gap: 0 },
+  list: { padding: 16 },
   beachItem: { paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   beachItemInactive: { opacity: 0.5 },
   beachInfo: { flex: 1 },
   beachName: { fontSize: 15, fontWeight: '700', color: Colors.text },
   beachMunicipality: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
-  beachCoords: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
   beachActions: { gap: 6, alignItems: 'flex-end' },
   editItemBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: Colors.border },
   editItemText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
@@ -205,10 +265,17 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   closeBtn: { fontSize: 16, color: Colors.primary, fontWeight: '600' },
-  modalForm: { padding: 20, gap: 16 },
-  fieldLabel: { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 6 },
+  modalForm: { padding: 20, gap: 12 },
+  fieldLabel: { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 4 },
   input: { borderWidth: 2, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, color: Colors.text, backgroundColor: Colors.card },
+  geoBtn: { backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  geoBtnDisabled: { opacity: 0.6 },
+  geoBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  geoResult: { backgroundColor: '#E8F5E9', borderRadius: 10, padding: 14, borderLeftWidth: 4, borderLeftColor: Colors.success, gap: 4 },
+  geoResultTitle: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  geoResultText: { fontSize: 13, color: Colors.textSecondary },
+  geoResultCoords: { fontSize: 12, color: Colors.textSecondary, fontFamily: 'monospace' },
   saveBtn: { backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  saveBtnDisabled: { opacity: 0.6 },
+  saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });
