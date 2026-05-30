@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  AppState,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import {
@@ -136,8 +138,21 @@ export default function DashboardScreen() {
     }
   }
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  const appState = useRef(AppState.currentState);
   useEffect(() => {
-    loadData();
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        loadData();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
   }, [loadData]);
 
   const onRefresh = useCallback(() => {
