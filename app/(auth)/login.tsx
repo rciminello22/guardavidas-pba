@@ -19,12 +19,17 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
 
   async function handleLogin() {
+    if (cooldown) return;
     if (!email || !password) {
       Alert.alert('Error', 'Completá todos los campos.');
       return;
     }
+    // CN-008: brief cooldown to prevent rapid-fire attempts
+    setCooldown(true);
+    setTimeout(() => setCooldown(false), 2000);
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);

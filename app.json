@@ -11,8 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.guardavidaspba.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa."
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrarte las condiciones climáticas de tu playa."
       }
     },
     "android": {

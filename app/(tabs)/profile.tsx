@@ -35,9 +35,10 @@ export default function ProfileScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // CN-016: exclude expo_push_token from profile screen query
     const { data } = await supabase
       .from('profiles')
-      .select('*, beaches(*)')
+      .select('id, full_name, beach_id, beach_name, lifeguard_id, is_admin, notify_wind, notify_uv, notify_precipitation, shift_start, shift_end, beaches(id, name, municipality, latitude, longitude)')
       .eq('id', user.id)
       .single();
 
@@ -48,8 +49,9 @@ export default function ProfileScreen() {
       setShiftStart((data.shift_start ?? '08:00').slice(0, 5));
       setShiftEnd((data.shift_end ?? '18:00').slice(0, 5));
       if (data.beaches) {
-        setCurrentBeach(data.beaches);
-        setSelectedBeach(data.beaches);
+        const beach = data.beaches as unknown as Beach;
+        setCurrentBeach(beach);
+        setSelectedBeach(beach);
       }
     }
     setLoading(false);

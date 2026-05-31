@@ -47,6 +47,7 @@ async function geocode(name: string, municipality: string): Promise<GeoResult | 
 }
 
 export default function AdminScreen() {
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,17 +57,32 @@ export default function AdminScreen() {
   const [geocoding, setGeocoding] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    // CN-001: verify is_admin before rendering any admin UI
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setIsAdmin(false); setLoading(false); return; }
+      supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+        .then(({ data }) => {
+          const admin = data?.is_admin ?? false;
+          setIsAdmin(admin);
+          if (admin) loadBeaches();
+          else setLoading(false);
+        });
+    });
+  }, []);
+
   const loadBeaches = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('beaches')
       .select('*')
       .order('municipality')
       .order('name');
+    if (error) {
+      Alert.alert('Error', 'No se pudieron cargar las playas.');
+    }
     setBeaches(data ?? []);
     setLoading(false);
   }, []);
-
-  useEffect(() => { loadBeaches(); }, [loadBeaches]);
 
   function openNew() {
     setEditing(null);
@@ -116,25 +132,49 @@ export default function AdminScreen() {
       longitude: geoResult.longitude,
     };
 
-    if (editing) {
-      await supabase.from('beaches').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('beaches').insert(payload);
-    }
+    // CN-006: check error on all write operations
+    const { error } = editing
+      ? await supabase.from('beaches').update(payload).eq('id', editing.id)
+      : await supabase.from('beaches').insert(payload);
+
     setSaving(false);
+    if (error) {
+      Alert.alert('Error', 'No se pudo guardar la playa.');
+      return;
+    }
     setModalOpen(false);
     loadBeaches();
   }
 
   async function toggleActive(beach: Beach) {
-    await supabase.from('beaches').update({ is_active: !beach.is_active }).eq('id', beach.id);
+    // CN-006: check error and rollback optimistic update on failure
+    const { error } = await supabase
+      .from('beaches')
+      .update({ is_active: !beach.is_active })
+      .eq('id', beach.id);
+
+    if (error) {
+      Alert.alert('Error', 'No se pudo actualizar la playa.');
+      return;
+    }
     setBeaches((prev) => prev.map((b) => b.id === beach.id ? { ...b, is_active: !b.is_active } : b));
   }
 
-  if (loading) {
+  if (isAdmin === null || loading) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  // CN-001: block non-admins from seeing any admin UI
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Text style={styles.deniedIcon}>🔒</Text>
+        <Text style={styles.deniedText}>Acceso denegado</Text>
+        <Text style={styles.deniedSubtext}>Solo los administradores pueden acceder a esta sección.</Text>
       </SafeAreaView>
     );
   }
@@ -192,6 +232,7 @@ export default function AdminScreen() {
               value={form.name}
               onChangeText={(v) => { setForm((p) => ({ ...p, name: v })); setGeoResult(null); }}
               autoCapitalize="words"
+              maxLength={100}
             />
 
             <Text style={styles.fieldLabel}>Municipio</Text>
@@ -202,6 +243,7 @@ export default function AdminScreen() {
               value={form.municipality}
               onChangeText={(v) => { setForm((p) => ({ ...p, municipality: v })); setGeoResult(null); }}
               autoCapitalize="words"
+              maxLength={100}
             />
 
             <TouchableOpacity
@@ -242,7 +284,10 @@ export default function AdminScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, padding: 32 },
+  deniedIcon: { fontSize: 48, marginBottom: 12 },
+  deniedText: { fontSize: 20, fontWeight: '700', color: Colors.text, marginBottom: 8 },
+  deniedSubtext: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
   headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.text },
   addBtn: { backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },

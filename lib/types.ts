@@ -15,7 +15,7 @@ export interface Profile {
   beach_id: string | null;
   beach_name: string | null;
   lifeguard_id: string;
-  expo_push_token: string | null;
+  expo_push_token?: string | null;
   is_admin: boolean;
   notify_wind: boolean;
   notify_uv: boolean;

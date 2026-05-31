@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
@@ -73,7 +74,10 @@ export default function AlertsScreen() {
       .order('created_at', { ascending: false })
       .limit(100);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) {
+      Alert.alert('Error', 'No se pudieron cargar las alertas.');
+    }
     setAlerts(data ?? []);
     setLoading(false);
     setRefreshing(false);
@@ -89,7 +93,13 @@ export default function AlertsScreen() {
   }, [loadAlerts]);
 
   async function markAsRead(alertId: string) {
-    await supabase.from('alerts').update({ is_read: true }).eq('id', alertId);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    // CN-005: scope update to authenticated user to prevent IDOR
+    await supabase.from('alerts')
+      .update({ is_read: true })
+      .eq('id', alertId)
+      .eq('user_id', user.id);
     setAlerts((prev) =>
       prev.map((a) => (a.id === alertId ? { ...a, is_read: true } : a))
     );

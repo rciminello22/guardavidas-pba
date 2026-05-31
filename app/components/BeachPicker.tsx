@@ -57,12 +57,15 @@ export default function BeachPicker({ selectedId, initialBeach, onSelect }: Read
 
   async function loadBeaches() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('beaches')
       .select('*')
       .eq('is_active', true)
       .order('municipality')
       .order('name');
+    if (error) {
+      console.error('Error loading beaches:', error.message);
+    }
     setBeaches(data ?? []);
     setFiltered(data ?? []);
     setLoading(false);

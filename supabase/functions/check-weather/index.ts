@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.106.2';
 
 const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1/forecast';
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
@@ -72,14 +72,19 @@ function isWithinShift(shiftStart: string, shiftEnd: string): boolean {
   return current >= start && current <= end;
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // CN-002: authenticate cron caller with shared secret
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Get all profiles with assigned beach
     const { data: profiles, error } = await supabase
       .from('profiles')
       .select('id, expo_push_token, notify_wind, notify_uv, notify_precipitation, shift_start, shift_end, beaches(id, name, municipality, latitude, longitude)')
@@ -138,7 +143,8 @@ Deno.serve(async (_req) => {
           }
         }
       } catch (profileErr) {
-        console.error(`Error processing profile ${profile.id}:`, profileErr);
+        // CN-019: truncate ID to avoid PII in logs
+        console.error(`Error processing profile [${profile.id.slice(0, 8)}...]:`, profileErr);
       }
     }
 
@@ -148,6 +154,7 @@ Deno.serve(async (_req) => {
     );
   } catch (err) {
     console.error('Edge function error:', err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    // CN-009: never expose internal error details to caller
+    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
   }
 });

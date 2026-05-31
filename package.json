@@ -4,7 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "@supabase/supabase-js": "^2.106.2",
+    "@supabase/supabase-js": "2.106.2",
     "expo": "~54.0.35",
     "expo-constants": "~18.0.13",
     "expo-device": "~8.0.10",
@@ -17,12 +17,15 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0",
-    "react-native-url-polyfill": "^2.0.0"
+    "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "uuid": "^11.1.1"
   },
   "scripts": {
     "start": "expo start",
