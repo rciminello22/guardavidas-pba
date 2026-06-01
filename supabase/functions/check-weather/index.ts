@@ -16,6 +16,16 @@ interface WeatherResult {
   precipitation: number;
 }
 
+interface Profile {
+  id: string;
+  expo_push_token: string | null;
+  notify_wind: boolean;
+  notify_uv: boolean;
+  notify_precipitation: boolean;
+  shift_start: string | null;
+  shift_end: string | null;
+}
+
 function getWindDirection(degrees: number): string {
   const dirs = [
     'Norte', 'Norte-Noreste', 'Noreste', 'Este-Noreste',
@@ -47,33 +57,33 @@ async function getWeather(lat: number, lon: number): Promise<WeatherResult> {
   };
 }
 
-async function sendPushNotification(token: string, title: string, body: string) {
+async function sendPushNotifications(tokens: string[], title: string, body: string) {
+  // Batch push notifications in one request
+  const messages = tokens.map((token) => ({
+    to: token,
+    title,
+    body,
+    sound: 'default',
+    priority: 'high',
+    channelId: 'alertas',
+  }));
+
   await fetch(EXPO_PUSH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to: token,
-      title,
-      body,
-      sound: 'default',
-      priority: 'high',
-      channelId: 'alertas',
-    }),
+    body: JSON.stringify(messages),
   });
 }
 
-function isWithinShift(shiftStart: string, shiftEnd: string): boolean {
+function isWithinShift(shiftStart: string | null, shiftEnd: string | null): boolean {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
-  const [startH, startM] = shiftStart.split(':').map(Number);
-  const [endH, endM] = shiftEnd.split(':').map(Number);
+  const [startH, startM] = (shiftStart ?? '08:00').split(':').map(Number);
+  const [endH, endM] = (shiftEnd ?? '18:00').split(':').map(Number);
   const current = now.getHours() * 60 + now.getMinutes();
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
-  return current >= start && current <= end;
+  return current >= (startH * 60 + startM) && current <= (endH * 60 + endM);
 }
 
 Deno.serve(async (req) => {
-  // CN-002: authenticate cron caller with shared secret
   const cronSecret = Deno.env.get('CRON_SECRET');
   if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
     return new Response('Unauthorized', { status: 401 });
@@ -85,76 +95,106 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('id, expo_push_token, notify_wind, notify_uv, notify_precipitation, shift_start, shift_end, beaches(id, name, municipality, latitude, longitude)')
-      .not('beach_id', 'is', null);
+    // Optimización: query por playa, no por usuario
+    // 500 playas → 500 llamadas a Open-Meteo en vez de 15.000
+    const { data: beaches, error } = await supabase
+      .from('beaches')
+      .select('id, name, latitude, longitude, profiles(id, expo_push_token, notify_wind, notify_uv, notify_precipitation, shift_start, shift_end)')
+      .eq('is_active', true);
 
     if (error) throw error;
-    if (!profiles || profiles.length === 0) {
+    if (!beaches || beaches.length === 0) {
       return new Response(JSON.stringify({ processed: 0 }), { status: 200 });
     }
 
+    let beachesProcessed = 0;
     let alertsCreated = 0;
     let pushSent = 0;
 
-    for (const profile of profiles) {
+    for (const beach of beaches) {
+      const profiles = (beach.profiles ?? []) as Profile[];
+      if (profiles.length === 0) continue;
+
       try {
-        const beach = profile.beaches as any;
-        if (!beach) continue;
-
+        // Una sola llamada al clima por playa
         const weather = await getWeather(beach.latitude, beach.longitude);
+
+        // Determinar qué alertas se triggean para esta playa
+        const triggeredAlerts: { type: string; message: string }[] = [];
+
+        if (weather.windspeed > THRESHOLDS.wind_kmh) {
+          triggeredAlerts.push({
+            type: 'viento',
+            message: `⚠️ Viento peligroso en ${beach.name}: ${weather.windspeed.toFixed(1)} km/h del ${getWindDirection(weather.winddirection)}`,
+          });
+        }
+        if (weather.uv_index > THRESHOLDS.uv_index) {
+          triggeredAlerts.push({
+            type: 'uv',
+            message: `☀️ UV extremo en ${beach.name}: índice ${weather.uv_index.toFixed(1)}`,
+          });
+        }
+        if (weather.precipitation > THRESHOLDS.precipitation_mmh) {
+          triggeredAlerts.push({
+            type: 'precipitacion',
+            message: `🌧️ Lluvia intensa en ${beach.name}: ${weather.precipitation.toFixed(1)} mm/h`,
+          });
+        }
+
+        if (triggeredAlerts.length === 0) {
+          beachesProcessed++;
+          continue;
+        }
+
+        // Crear alertas para cada guardavidas según sus preferencias
         const newAlerts: { user_id: string; type: string; message: string; is_read: boolean }[] = [];
-        const pushMessages: string[] = [];
+        const pushTokens: string[] = [];
+        const pushBody = triggeredAlerts.map((a) => a.message).join(' | ');
 
-        if (profile.notify_wind && weather.windspeed > THRESHOLDS.wind_kmh) {
-          const msg = `⚠️ Viento peligroso en ${beach.name}: ${weather.windspeed.toFixed(1)} km/h del ${getWindDirection(weather.winddirection)}`;
-          newAlerts.push({ user_id: profile.id, type: 'viento', message: msg, is_read: false });
-          pushMessages.push(msg);
-        }
+        for (const profile of profiles) {
+          for (const alert of triggeredAlerts) {
+            const wantsAlert =
+              (alert.type === 'viento' && profile.notify_wind) ||
+              (alert.type === 'uv' && profile.notify_uv) ||
+              (alert.type === 'precipitacion' && profile.notify_precipitation);
 
-        if (profile.notify_uv && weather.uv_index > THRESHOLDS.uv_index) {
-          const msg = `☀️ UV extremo en ${beach.name}: índice ${weather.uv_index.toFixed(1)}`;
-          newAlerts.push({ user_id: profile.id, type: 'uv', message: msg, is_read: false });
-          pushMessages.push(msg);
-        }
+            if (wantsAlert) {
+              newAlerts.push({ user_id: profile.id, type: alert.type, message: alert.message, is_read: false });
+            }
+          }
 
-        if (profile.notify_precipitation && weather.precipitation > THRESHOLDS.precipitation_mmh) {
-          const msg = `🌧️ Lluvia intensa en ${beach.name}: ${weather.precipitation.toFixed(1)} mm/h`;
-          newAlerts.push({ user_id: profile.id, type: 'precipitacion', message: msg, is_read: false });
-          pushMessages.push(msg);
+          if (profile.expo_push_token && isWithinShift(profile.shift_start, profile.shift_end)) {
+            const wantsAnyAlert = triggeredAlerts.some((a) =>
+              (a.type === 'viento' && profile.notify_wind) ||
+              (a.type === 'uv' && profile.notify_uv) ||
+              (a.type === 'precipitacion' && profile.notify_precipitation)
+            );
+            if (wantsAnyAlert) pushTokens.push(profile.expo_push_token);
+          }
         }
 
         if (newAlerts.length > 0) {
           await supabase.from('alerts').insert(newAlerts);
           alertsCreated += newAlerts.length;
-
-          const withinShift = isWithinShift(
-            profile.shift_start ?? '08:00',
-            profile.shift_end ?? '18:00'
-          );
-          if (profile.expo_push_token && pushMessages.length > 0 && withinShift) {
-            await sendPushNotification(
-              profile.expo_push_token,
-              `🚨 Alerta — ${beach.name}`,
-              pushMessages.join(' | ')
-            );
-            pushSent++;
-          }
         }
-      } catch (profileErr) {
-        // CN-019: truncate ID to avoid PII in logs
-        console.error(`Error processing profile [${profile.id.slice(0, 8)}...]:`, profileErr);
+
+        if (pushTokens.length > 0) {
+          await sendPushNotifications(pushTokens, `🚨 Alerta — ${beach.name}`, pushBody);
+          pushSent += pushTokens.length;
+        }
+
+        beachesProcessed++;
+      } catch (beachErr) {
+        console.error(`Error processing beach [${beach.id.slice(0, 8)}...]:`, beachErr);
       }
     }
 
     return new Response(
-      JSON.stringify({ processed: profiles.length, alertsCreated, pushSent }),
+      JSON.stringify({ beachesProcessed, alertsCreated, pushSent }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (err) {
     console.error('Edge function error:', err);
-    // CN-009: never expose internal error details to caller
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
   }
 });
